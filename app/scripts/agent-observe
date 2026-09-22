@@ -1,6 +1,34 @@
 #!/bin/zsh
 # Emit lightweight lifecycle spans for a local coding-agent invocation.
+#   agent-observe <codex|claude|opencode> [args...]   wrap a run: running -> completed/failed/cancelled
+#   agent-observe --emit <state>                      from a hook inside a wrapped run (e.g. waiting)
 set -uo pipefail
+
+emit() {
+  local state=$1 span_id now
+  span_id=$(head -c 8 /dev/urandom | hexdump -ve '1/1 "%.2x"')
+  now=$(perl -MTime::HiRes=time -e 'printf "%.0f", time * 1000000000')
+  curl --fail --silent --max-time 2 http://127.0.0.1:4318/v1/traces -H 'Content-Type: application/json' \
+    --data "$(jq -n --arg tool "$tool" --arg workspace "$workspace" --arg agent_id "$agent_id" --arg agent_name "$agent_name" --arg parent_id "$parent_id" --arg role "$role" --arg run_id "$run_id" --arg trace_id "$trace_id" --arg span_id "$span_id" --arg now "$now" --arg state "$state" '{resourceSpans: [{resource: {attributes: ([{key: "service.name", value: {stringValue: ($tool + "-" + $workspace)}}, {key: "agent.id", value: {stringValue: $agent_id}}, {key: "agent.name", value: {stringValue: $agent_name}}, {key: "agent.workspace", value: {stringValue: $workspace}}, {key: "agent.role", value: {stringValue: $role}}] + (if $parent_id == "" then [] else [{key: "agent.parent.id", value: {stringValue: $parent_id}}] end))}, scopeSpans: [{scope: {name: "agent-observe"}, spans: [{traceId: $trace_id, spanId: $span_id, name: "agent.run", kind: 1, startTimeUnixNano: $now, endTimeUnixNano: $now, attributes: [{key: "agent.status", value: {stringValue: $state}}, {key: "agent.run.id", value: {stringValue: $run_id}}]}]}]}]}' )" >/dev/null 2>&1 || true
+}
+
+if [[ ${1:-} == --emit ]]; then
+  # Hook mode: only meaningful inside a run this script wrapped; plain sessions exit silently.
+  [[ -n ${AGENT_OBSERVER_TRACE_ID:-} ]] || exit 0
+  state=${2:?usage: agent-observe --emit <state>}
+  tool=$AGENT_OBSERVER_TOOL workspace=$AGENT_OBSERVER_WORKSPACE agent_id=$AGENT_OBSERVER_AGENT_ID
+  agent_name=$AGENT_OBSERVER_AGENT_NAME parent_id=${AGENT_OBSERVER_PARENT_ID:-} role=$AGENT_OBSERVER_ROLE
+  run_id=$AGENT_OBSERVER_RUN_ID trace_id=$AGENT_OBSERVER_TRACE_ID
+  [[ -t 0 ]] && input='{}' || input=$(cat)
+  emit "$state"
+  if [[ $state == waiting ]]; then
+    message=$(jq -r '.message // "Turn finished — your move"' <<<"$input" 2>/dev/null)
+    # argv, not string interpolation, so the message can't break out of the AppleScript.
+    osascript -e 'on run argv' -e 'display notification (item 2 of argv) with title (item 1 of argv)' -e 'end run' \
+      "$agent_name needs you" "${message:-Turn finished — your move}" >/dev/null 2>&1 || true
+  fi
+  exit 0
+fi
 
 tool=${1:-}
 shift 2>/dev/null || true
@@ -25,19 +53,16 @@ role=${AGENT_OBSERVER_ROLE:-worker}
 agent_name=${AGENT_OBSERVER_AGENT_NAME:-$tool-$workspace}
 attrs="agent.id=$agent_id,agent.name=$agent_name,agent.workspace=$workspace,agent.run.id=$run_id,agent.role=$role${parent_id:+,agent.parent.id=$parent_id}"
 
+# Hooks run as children of the agent and read these back via --emit.
+export AGENT_OBSERVER_TOOL=$tool AGENT_OBSERVER_WORKSPACE=$workspace AGENT_OBSERVER_AGENT_ID=$agent_id
+export AGENT_OBSERVER_AGENT_NAME=$agent_name AGENT_OBSERVER_PARENT_ID=$parent_id AGENT_OBSERVER_ROLE=$role
+export AGENT_OBSERVER_RUN_ID=$run_id AGENT_OBSERVER_TRACE_ID=$trace_id
+
 export OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://127.0.0.1:4318}
 export OTEL_EXPORTER_OTLP_PROTOCOL=${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
 export OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-$tool-$workspace}
 export OTEL_RESOURCE_ATTRIBUTES="${OTEL_RESOURCE_ATTRIBUTES:+$OTEL_RESOURCE_ATTRIBUTES,}$attrs"
 print "agent_id=$agent_id run_id=$run_id role=$role${parent_id:+ parent_agent_id=$parent_id}"
-
-emit() {
-  local state=$1 span_id now
-  span_id=$(head -c 8 /dev/urandom | hexdump -ve '1/1 "%.2x"')
-  now=$(perl -MTime::HiRes=time -e 'printf "%.0f", time * 1000000000')
-  curl --fail --silent --max-time 2 http://127.0.0.1:4318/v1/traces -H 'Content-Type: application/json' \
-    --data "$(jq -n --arg tool "$tool" --arg workspace "$workspace" --arg agent_id "$agent_id" --arg agent_name "$agent_name" --arg parent_id "$parent_id" --arg role "$role" --arg run_id "$run_id" --arg trace_id "$trace_id" --arg span_id "$span_id" --arg now "$now" --arg state "$state" '{resourceSpans: [{resource: {attributes: ([{key: "service.name", value: {stringValue: ($tool + "-" + $workspace)}}, {key: "agent.id", value: {stringValue: $agent_id}}, {key: "agent.name", value: {stringValue: $agent_name}}, {key: "agent.workspace", value: {stringValue: $workspace}}, {key: "agent.role", value: {stringValue: $role}}] + (if $parent_id == "" then [] else [{key: "agent.parent.id", value: {stringValue: $parent_id}}] end))}, scopeSpans: [{scope: {name: "agent-observe"}, spans: [{traceId: $trace_id, spanId: $span_id, name: "agent.run", kind: 1, startTimeUnixNano: $now, endTimeUnixNano: $now, attributes: [{key: "agent.status", value: {stringValue: $state}}, {key: "agent.run.id", value: {stringValue: $run_id}}]}]}]}]}' )" >/dev/null 2>&1 || true
-}
 
 trap 'emit cancelled; exit 130' INT TERM
 emit running

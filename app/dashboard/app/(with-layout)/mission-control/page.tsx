@@ -43,6 +43,15 @@ function timeAgo(value?: string) {
   return `${Math.floor(minutes / 1440)}d ago`;
 }
 
+const statusDot: Record<string, string> = {
+  running: 'animate-pulse bg-cyan-300 shadow-[0_0_10px_#67e8f9]',
+  waiting: 'animate-pulse bg-amber-300 shadow-[0_0_12px_#fcd34d]',
+  failed: 'bg-red-400',
+  cancelled: 'bg-slate-500',
+  idle: 'bg-slate-600',
+};
+const dotFor = (state?: string) => statusDot[state ?? ''] ?? 'bg-emerald-400';
+
 function isLive(value?: string) {
   return !!value && Date.now() - new Date(value).getTime() < 15 * 60 * 1000;
 }
@@ -105,6 +114,7 @@ export default function MissionControlPage() {
   }, [projectCards]);
 
   const liveRuns = runs.filter((run) => run.agent_status === 'running');
+  const waitingRuns = runs.filter((run) => run.agent_status === 'waiting');
   const { data: lattice } = useQuery<LatticeGraph>({
     queryKey: ['lattice'],
     queryFn: () => fetch('/api/lattice').then((res) => res.json()),
@@ -138,11 +148,25 @@ export default function MissionControlPage() {
         </header>
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Metric label="Projects" value={projectsLoading ? '—' : String(projects.length)} icon={<Layers01Icon />} accent="text-violet-300" />
+          <Metric label="Needs you" value={String(waitingRuns.length)} icon={<Layers01Icon />} accent="text-amber-300" />
           <Metric label="Running agents" value={String(liveRuns.length)} icon={<Activity01Icon />} accent="text-cyan-300" />
           <Metric label="Tokens observed" value={compact.format(totals.tokens)} icon={<FlashIcon />} accent="text-amber-300" />
           <Metric label="Observed cost" value={money.format(totals.cost)} icon={<ArrowUpRight01Icon />} accent="text-emerald-300" />
         </section>
+
+        {waitingRuns.length > 0 && (
+          <section className="mt-6 rounded-3xl border border-amber-300/30 bg-amber-300/5 p-5 sm:p-7">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-300">Needs you</p>
+            <div className="mt-4 grid gap-2">
+              {waitingRuns.map((run) => (
+                <Link key={run.trace_id} href={`/traces?trace_id=${run.trace_id}`} className="flex items-center justify-between gap-4 rounded-2xl border border-amber-300/20 bg-[#0c1929] px-4 py-3 transition hover:border-amber-300/50">
+                  <span className="flex items-center gap-3"><span className={`h-2.5 w-2.5 rounded-full ${dotFor('waiting')}`} /><span className="font-medium">{run.agent_name || run.root_service_name}</span><span className="text-xs text-slate-400">{run.projectName}</span></span>
+                  <span className="text-xs text-amber-200">waiting · {timeAgo(run.start_time)}</span>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
         {!!lattice?.nodes.length && <LatticeView graph={lattice} latest={latestByAgent} />}
 
@@ -207,6 +231,7 @@ export default function MissionControlPage() {
 function LatticeView({ graph, latest }: { graph: LatticeGraph; latest: Map<string, Run> }) {
   const supervisedBy = new Map(graph.edges.filter((edge) => edge.kind === 'supervises').map((edge) => [edge.to, edge.from]));
   const live = graph.nodes.filter((node) => latest.get(node.id)?.agent_status === 'running').length;
+  const waiting = graph.nodes.filter((node) => latest.get(node.id)?.agent_status === 'waiting').length;
   return (
     <section className="mt-6 rounded-3xl border border-white/10 bg-gradient-to-br from-[#10233a] to-[#0b1727] p-5 shadow-2xl shadow-cyan-950/20 sm:p-7">
       <div className="flex items-end justify-between gap-4">
@@ -214,7 +239,7 @@ function LatticeView({ graph, latest }: { graph: LatticeGraph; latest: Map<strin
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-300">Lattice</p>
           <h2 className="mt-1 text-xl font-semibold">Declared agents, live status</h2>
         </div>
-        <p className="text-sm text-slate-400">{live} of {graph.nodes.length} agents running</p>
+        <p className="text-sm text-slate-400">{live} of {graph.nodes.length} running{waiting > 0 && <span className="text-amber-300"> · {waiting} waiting on you</span>}</p>
       </div>
       <div className="mt-6 overflow-x-auto pb-2">
         <div className="flex min-w-max flex-col items-center gap-3">
@@ -234,10 +259,9 @@ function LatticeView({ graph, latest }: { graph: LatticeGraph; latest: Map<strin
 
 function LatticeCard({ node, run, supervisor }: { node: LatticeNode; run?: Run; supervisor?: string }) {
   const state = run?.agent_status ?? 'idle';
-  const dot = state === 'running' ? 'animate-pulse bg-cyan-300 shadow-[0_0_10px_#67e8f9]' : state === 'failed' ? 'bg-red-400' : state === 'idle' ? 'bg-slate-600' : 'bg-emerald-400';
   const body = (
     <>
-      <div className="flex items-center gap-2"><span title={state} className={`h-2.5 w-2.5 rounded-full ${dot}`} /><p className="truncate font-medium">{node.name}</p></div>
+      <div className="flex items-center gap-2"><span title={state} className={`h-2.5 w-2.5 rounded-full ${dotFor(state)}`} /><p className="truncate font-medium">{node.name}</p></div>
       <p className="mt-2 line-clamp-2 text-xs text-slate-400">{node.role}</p>
       <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-slate-300">
         <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5">{state}</span>
@@ -247,7 +271,7 @@ function LatticeCard({ node, run, supervisor }: { node: LatticeNode; run?: Run; 
       </div>
     </>
   );
-  const className = `block w-60 rounded-2xl border p-4 transition ${state === 'running' ? 'border-cyan-300/50 bg-cyan-300/5' : 'border-white/10 bg-[#0c1929]'}`;
+  const className = `block w-60 rounded-2xl border p-4 transition ${state === 'running' ? 'border-cyan-300/50 bg-cyan-300/5' : state === 'waiting' ? 'border-amber-300/60 bg-amber-300/10 shadow-lg shadow-amber-950/40' : 'border-white/10 bg-[#0c1929]'}`;
   return run ? <Link href={`/traces?trace_id=${run.trace_id}`} className={`${className} hover:-translate-y-0.5 hover:border-cyan-300/40`}>{body}</Link> : <div className={className}>{body}</div>;
 }
 
@@ -260,8 +284,7 @@ function RunBranch({ run }: { run: RunNode }) {
 }
 
 function AgentCard({ run, leader = false }: { run: Run; leader?: boolean }) {
-  const status = run.agent_status === 'running' ? 'bg-cyan-300 shadow-[0_0_10px_#67e8f9]' : run.agent_status === 'failed' ? 'bg-red-400' : 'bg-emerald-400';
-  return <Link href={`/traces?trace_id=${run.trace_id}`} className={`w-56 rounded-2xl border p-4 transition hover:-translate-y-0.5 ${leader ? 'border-amber-300/50 bg-amber-300/10 shadow-lg shadow-amber-950/30' : 'border-white/10 bg-[#0c1929] hover:border-cyan-300/40'}`}><div className="flex items-center gap-2"><span title={run.agent_status || 'Observed'} className={`h-2.5 w-2.5 rounded-full ${status}`} /><p className="truncate font-medium">{run.agent_name || run.root_service_name}</p></div><p className="mt-2 line-clamp-2 text-xs text-slate-400">{run.root_span_name || 'agent.run'}</p><span className="mt-3 inline-block rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-slate-300">{run.agent_role || 'worker'}</span></Link>;
+  return <Link href={`/traces?trace_id=${run.trace_id}`} className={`w-56 rounded-2xl border p-4 transition hover:-translate-y-0.5 ${leader ? 'border-amber-300/50 bg-amber-300/10 shadow-lg shadow-amber-950/30' : 'border-white/10 bg-[#0c1929] hover:border-cyan-300/40'}`}><div className="flex items-center gap-2"><span title={run.agent_status || 'Observed'} className={`h-2.5 w-2.5 rounded-full ${dotFor(run.agent_status)}`} /><p className="truncate font-medium">{run.agent_name || run.root_service_name}</p></div><p className="mt-2 line-clamp-2 text-xs text-slate-400">{run.root_span_name || 'agent.run'}</p><span className="mt-3 inline-block rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-slate-300">{run.agent_role || 'worker'}</span></Link>;
 }
 
 function Metric({ label, value, icon, accent }: { label: string; value: string; icon: React.ReactNode; accent: string }) {

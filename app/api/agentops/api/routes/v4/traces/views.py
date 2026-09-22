@@ -299,6 +299,11 @@ class TraceListView(BaseTraceView):
                     error_count=trace.error_count,
                     tags=trace.tags,
                     total_cost=trace.total_cost,
+                    agent_id=trace.agent_id,
+                    agent_name=trace.agent_name,
+                    agent_status=trace.agent_status,
+                    parent_agent_id=trace.parent_agent_id,
+                    agent_role=trace.agent_role,
                     freeplan_truncated=await self.trace_is_freeplan_truncated(trace),
                 )
                 for trace in trace_list.traces

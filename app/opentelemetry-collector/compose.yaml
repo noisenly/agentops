@@ -5,12 +5,12 @@
 services:
   otelcollector:
     build:
-      context: ./opentelemetry-collector
+      context: .
       dockerfile: Dockerfile
     container_name: otel
     ports:
-      - '4317:4317' # otlp receiver
-      - '4318:4318' # otlp receiver
+      - '127.0.0.1:4317:4317' # otlp receiver
+      - '127.0.0.1:4318:4318' # otlp receiver
       - '1888:1888' # pprof extension
       - '13133:13133' # health_check extension
       - '55679:55679' # zpages extension
@@ -26,6 +26,7 @@ services:
       - CLICKHOUSE_TTL=${CLICKHOUSE_TTL:-12h}
       - CLICKHOUSE_TIMEOUT=${CLICKHOUSE_TIMEOUT:-10s}
       - JWT_SECRET=${JWT_SECRET_KEY:-super-secret-jwt-token-with-at-least-32-characters-long}
+      - AGENTOPS_LOCAL_PROJECT_ID=${AGENTOPS_LOCAL_PROJECT_ID}
 
   clickhouse:
     image: clickhouse/clickhouse-server:24.12
@@ -36,6 +37,9 @@ services:
       - CLICKHOUSE_DB=${CLICKHOUSE_DATABASE:-otel_2}
       - CLICKHOUSE_USER=${CLICKHOUSE_USERNAME:-default}
       - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-password}
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./opentelemetry-collector/clickhouse/default_ddl:/docker-entrypoint-initdb.d:ro
   #
   # grafana:
   #   image: grafana/grafana:latest
@@ -48,3 +52,8 @@ services:
   #   ports:
   #     - "3001:3000"
   #
+
+volumes:
+  clickhouse-data:
+    external: true
+    name: app_clickhouse-data

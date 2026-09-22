@@ -44,7 +44,7 @@ class BaseTraceModel(ClickhouseModel):
     table_name = "otel_traces"
     selectable_fields = {
         'Timestamp': "timestamp",
-        'project_id': "project_id",
+        "if(ProjectId = '', ResourceAttributes['ProjectId'], ProjectId)": "project_id",
         'TraceId': "trace_id",
         'SpanId': "span_id",
         'ParentSpanId': "parent_span_id",
@@ -72,8 +72,8 @@ class BaseTraceModel(ClickhouseModel):
         "trace_id": ("=", "TraceId"),
         "span_id": ("=", "SpanId"),
         "parent_span_id": ("=", "ParentSpanId"),
-        "project_id": ("=", "project_id"),
-        "project_ids": (WithinListOperation, "project_id"),
+        "project_id": ("=", "if(ProjectId = '', ResourceAttributes['ProjectId'], ProjectId)"),
+        "project_ids": (WithinListOperation, "if(ProjectId = '', ResourceAttributes['ProjectId'], ProjectId)"),
         "start_time": (">=", "Timestamp"),
         "end_time": ("<=", "Timestamp"),
     }
@@ -209,7 +209,7 @@ class TraceSummaryModel(BaseTraceModel):
     """
 
     filterable_fields = {
-        "project_id": ("=", "project_id"),
+        "project_id": ("=", "if(ProjectId = '', ResourceAttributes['ProjectId'], ProjectId)"),
         "start_time": (">=", "Timestamp"),
         "end_time": ("<=", "Timestamp"),
     }
@@ -229,6 +229,11 @@ class TraceSummaryModel(BaseTraceModel):
     error_count: int
     tags: Optional[list[str]] = pydantic.Field(default_factory=list)
     total_cost: Optional[float] = None
+    agent_id: Optional[str] = None
+    agent_name: Optional[str] = None
+    agent_status: Optional[str] = None
+    parent_agent_id: Optional[str] = None
+    agent_role: Optional[str] = None
 
     @pydantic.field_validator('start_time', mode='before')
     def datetime_with_timezone(cls, v: datetime) -> datetime:
@@ -267,6 +272,11 @@ class TraceSummaryModel(BaseTraceModel):
                 TraceId as trace_id,
                 any(ServiceName) AS service_name,
                 argMin(SpanName, Timestamp) AS span_name,
+                argMin(ResourceAttributes['agent.id'], Timestamp) AS agent_id,
+                argMin(ResourceAttributes['agent.name'], Timestamp) AS agent_name,
+                argMax(SpanAttributes['agent.status'], Timestamp) AS agent_status,
+                argMin(ResourceAttributes['agent.parent.id'], Timestamp) AS parent_agent_id,
+                argMin(ResourceAttributes['agent.role'], Timestamp) AS agent_role,
                 argMin(SpanAttributes['agentops.tags'], Timestamp) AS tags,
                 -- Calculate wall-clock duration instead of summing individual span durations
                 min(Timestamp) AS start_time,
@@ -330,7 +340,7 @@ class TraceListMetricsModel(SpanMetricsMixin, BaseTraceModel):
         'StatusCode': "status_code",
     }
     filterable_fields = {
-        "project_id": ("=", "project_id"),
+        "project_id": ("=", "if(ProjectId = '', ResourceAttributes['ProjectId'], ProjectId)"),
         "start_time": (">=", "Timestamp"),
         "end_time": ("<=", "Timestamp"),
         "span_name": ("ILIKE", "SpanName"),

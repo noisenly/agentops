@@ -54,6 +54,7 @@ const staticHelpLinks: Omit<ILink, 'icon' | 'variant'>[] = [
 ];
 
 const dataLinksConfig: NavLinkConfig[] = [
+  { title: 'Mission Control', href: '/mission-control', IconComponent: OverviewIcon },
   { title: 'Projects', href: '/projects', IconComponent: ProjectsIcon },
   { title: 'Traces', href: '/traces', IconComponent: DrilldownIcon },
   { title: 'Metrics', href: '/overview', IconComponent: OverviewIcon },

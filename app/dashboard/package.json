@@ -70,7 +70,7 @@
     "d3-scale": "^4.0.2",
     "date-fns": "^2.30.0",
     "framer-motion": "^11.3.18",
-    "hugeicons-react": "^0.3.0",
+    "hugeicons-react": "^0.4.0",
     "idb": "^7.1.1",
     "input-otp": "^1.4.2",
     "isomorphic-dompurify": "^2.24.0",

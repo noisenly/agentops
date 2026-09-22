@@ -3,7 +3,6 @@
 CREATE TABLE IF NOT EXISTS otel_traces (
     ProjectId String CODEC(ZSTD(1)),
     Timestamp DateTime64(9) CODEC(Delta, ZSTD(1)),
-    ProjectId String CODEC(ZSTD(1)),
     TraceId String CODEC(ZSTD(1)),
     SpanId String CODEC(ZSTD(1)),
     ParentSpanId String CODEC(ZSTD(1)),

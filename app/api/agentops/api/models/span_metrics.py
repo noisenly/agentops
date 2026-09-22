@@ -23,6 +23,13 @@ MODEL_LOOKUP_ALIASES = {
     "sonar": "perplexity/sonar",
 }
 
+# Fallback until tokencost ships these current model IDs. Values are USD/token.
+LOCAL_MODEL_TOKEN_COSTS = {
+    "gpt-5.4-nano": {"input": Decimal("0.0000002"), "output": Decimal("0.00000125")},
+    "gpt-5.6-terra": {"input": Decimal("0.000002"), "output": Decimal("0.000012")},
+    "gpt-5.6-luna": {"input": Decimal("0.0000002"), "output": Decimal("0.0000012")},
+}
+
 
 def _format_cost(value: Decimal) -> str:
     """Helper function to format a Decimal cost to a string with 7 decimal places."""
@@ -276,7 +283,9 @@ class SpanMetricsMixin(ClickhouseModel):
         try:
             completion_cost = costs.calculate_cost_by_tokens(tokens, self.model_for_cost, direction)
         except Exception:
-            return Decimal(0)
+            return Decimal(tokens) * LOCAL_MODEL_TOKEN_COSTS.get(
+                self.model_for_cost, {}
+            ).get(direction, Decimal(0))
 
         if not completion_cost:
             return Decimal(0)

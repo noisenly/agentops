@@ -1,0 +1,47 @@
+#!/bin/zsh
+# Emit lightweight lifecycle spans for a local coding-agent invocation.
+set -uo pipefail
+
+tool=${1:-}
+shift 2>/dev/null || true
+case $tool in
+  codex|claude|opencode) ;;
+  *) print -u2 "usage: agent-observe <codex|claude|opencode> [arguments...]"; exit 2 ;;
+esac
+command -v "$tool" >/dev/null || { print -u2 "agent-observe: $tool is not installed"; exit 127; }
+
+workspace=${AGENT_OBSERVER_WORKSPACE:-${PWD:t}}
+case $workspace in
+  skill-mapper|skillvue-showroom-pmi-promo|skillvue-showroom-monorepo|corporate-site) ;;
+  *) print -u2 "agent-observe: unsupported workspace $workspace"; exit 2 ;;
+esac
+
+run_id=${AGENT_OBSERVER_RUN_ID:-$(uuidgen | tr -d '-' | tr '[:upper:]' '[:lower:]')}
+trace_id=$(uuidgen | tr -d '-' | tr '[:upper:]' '[:lower:]')
+agent_id=${AGENT_OBSERVER_AGENT_ID:-$workspace.$tool.$run_id}
+parent_id=${AGENT_OBSERVER_PARENT_ID:-}
+role=${AGENT_OBSERVER_ROLE:-worker}
+# Lattice node this run lights up (e.g. demo_leader, impl-1060); defaults to tool-workspace.
+agent_name=${AGENT_OBSERVER_AGENT_NAME:-$tool-$workspace}
+attrs="agent.id=$agent_id,agent.name=$agent_name,agent.workspace=$workspace,agent.run.id=$run_id,agent.role=$role${parent_id:+,agent.parent.id=$parent_id}"
+
+export OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://127.0.0.1:4318}
+export OTEL_EXPORTER_OTLP_PROTOCOL=${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
+export OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-$tool-$workspace}
+export OTEL_RESOURCE_ATTRIBUTES="${OTEL_RESOURCE_ATTRIBUTES:+$OTEL_RESOURCE_ATTRIBUTES,}$attrs"
+print "agent_id=$agent_id run_id=$run_id role=$role${parent_id:+ parent_agent_id=$parent_id}"
+
+emit() {
+  local state=$1 span_id now
+  span_id=$(head -c 8 /dev/urandom | hexdump -ve '1/1 "%.2x"')
+  now=$(perl -MTime::HiRes=time -e 'printf "%.0f", time * 1000000000')
+  curl --fail --silent --max-time 2 http://127.0.0.1:4318/v1/traces -H 'Content-Type: application/json' \
+    --data "$(jq -n --arg tool "$tool" --arg workspace "$workspace" --arg agent_id "$agent_id" --arg agent_name "$agent_name" --arg parent_id "$parent_id" --arg role "$role" --arg run_id "$run_id" --arg trace_id "$trace_id" --arg span_id "$span_id" --arg now "$now" --arg state "$state" '{resourceSpans: [{resource: {attributes: ([{key: "service.name", value: {stringValue: ($tool + "-" + $workspace)}}, {key: "agent.id", value: {stringValue: $agent_id}}, {key: "agent.name", value: {stringValue: $agent_name}}, {key: "agent.workspace", value: {stringValue: $workspace}}, {key: "agent.role", value: {stringValue: $role}}] + (if $parent_id == "" then [] else [{key: "agent.parent.id", value: {stringValue: $parent_id}}] end))}, scopeSpans: [{scope: {name: "agent-observe"}, spans: [{traceId: $trace_id, spanId: $span_id, name: "agent.run", kind: 1, startTimeUnixNano: $now, endTimeUnixNano: $now, attributes: [{key: "agent.status", value: {stringValue: $state}}, {key: "agent.run.id", value: {stringValue: $run_id}}]}]}]}]}' )" >/dev/null 2>&1 || true
+}
+
+trap 'emit cancelled; exit 130' INT TERM
+emit running
+"$tool" "$@"
+code=$?
+(( code == 0 )) && emit completed || emit failed
+exit "$code"

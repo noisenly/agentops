@@ -54,7 +54,7 @@ import { useProject } from '@/app/providers/project-provider';
 import { ApiKeyBox } from '@/components/ui/api-key-box';
 import { PremiumUpsellBanner } from '@/components/ui/premium-upsell-banner';
 import { SubscriptionBadge } from '@/components/ui/subscription-badge';
-import { useOrgFeatures } from '@/hooks/useOrgFeatures';
+import { getDerivedPermissions } from '@/types/IPermissions';
 import { UpsellModal } from '@/components/ui/upsell-modal';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -97,9 +97,10 @@ export function ProjectList(props: { org: IOrg }) {
   const [newProject, setNewProject] = useState<boolean>(false);
   const [newProjectName, setNewProjectName] = useState<string>('New Project');
   const { selectedProject } = useProject();
-  const { permissions, isLoading: isPermissionsLoading } = useOrgFeatures();
+  const permissions = useMemo(() => getDerivedPermissions(props.org), [props.org]);
+  const isPermissionsLoading = false;
 
-  const isPro = props.org.prem_status === 'pro';
+  const isPro = props.org.prem_status !== 'free';
   const isCurrentOrg = selectedProject?.org_id === props.org.id;
 
   const canCreateMoreProjects = useMemo(() => {

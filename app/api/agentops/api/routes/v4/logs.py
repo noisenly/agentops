@@ -8,7 +8,9 @@ Returns the public URL where the data can be accessed.
 Uses Supabase Bucket storage (via the AWS S3 interface).
 """
 
+import json
 import re
+from botocore.exceptions import ClientError
 from fastapi import Depends, HTTPException, Request, status
 
 from agentops.common.environment import APP_URL, FREEPLAN_LOGS_LINE_LIMIT
@@ -21,6 +23,7 @@ from agentops.api.environment import SUPABASE_S3_LOGS_BUCKET
 from agentops.api.storage import get_s3_client
 from agentops.api.storage import BaseObjectUploadView
 from agentops.api.models.traces import TraceModel
+from agentops.api.db.clickhouse_client import get_async_clickhouse
 
 
 @public_route
@@ -68,6 +71,46 @@ def convert_trace_id(trace_id: str) -> str:
         return trace_id
     except ValueError:
         return trace_id
+
+
+async def get_local_codex_logs(trace: TraceModel) -> str | None:
+    """Return Codex's OTLP logs when no hosted object storage is configured."""
+    conversation_id = next(
+        (
+            span.span_attributes.get("gen_ai.conversation.id")
+            for span in trace.spans
+            if span.span_attributes.get("gen_ai.agent.name") == "codex"
+        ),
+        None,
+    )
+    if not conversation_id:
+        return None
+
+    client = await get_async_clickhouse()
+    result = await client.query(
+        """
+        SELECT Timestamp AS timestamp, LogAttributes AS attributes
+        FROM otel_logs
+        WHERE ServiceName = 'codex_cli_rs'
+          AND LogAttributes['conversation.id'] = %(conversation_id)s
+        ORDER BY Timestamp
+        """,
+        parameters={"conversation_id": conversation_id},
+    )
+    lines = []
+    for row in result.named_results():
+        attributes = row["attributes"]
+        fields = {
+            key: attributes[key]
+            for key in (
+                "event.name", "event.kind", "model", "prompt",
+                "input_token_count", "output_token_count", "cached_token_count",
+                "tool.name", "ttft_ms", "duration_ms",
+            )
+            if attributes.get(key)
+        }
+        lines.append(f'{row["timestamp"]} {json.dumps(fields, ensure_ascii=False)}')
+    return "\n".join(lines) or None
 
 
 @add_cors_headers(
@@ -118,7 +161,14 @@ async def get_trace_logs(
             freeplan_truncated=project.is_freeplan,
         )
 
-    except s3_client.exceptions.NoSuchKey:
+    except (s3_client.exceptions.NoSuchKey, ClientError):
+        local_content = await get_local_codex_logs(trace)
+        if local_content:
+            return LogContentResponse(
+                content=local_content,
+                trace_id=trace_id,
+                freeplan_truncated=project.is_freeplan,
+            )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No logs found for trace ID: {trace_id}",

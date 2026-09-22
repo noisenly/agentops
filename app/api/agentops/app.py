@@ -14,7 +14,7 @@ import sentry_sdk
 
 from agentops.api.log_config import logger
 from .common.sentry import sanitize_event
-from .common.environment import API_DOMAIN
+from .common.environment import API_DOMAIN, APP_URL
 from .common.openapi import create_combined_openapi_fn
 from .common.lifespan import lifespan
 from .auth.app import app as auth_app
@@ -46,7 +46,7 @@ logger.info(f"Docs available at: {app.docs_url}" if app.docs_url else "Docs disa
 if "localhost" in API_DOMAIN or "127.0.0.1" in API_DOMAIN:
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+        allow_origins=[APP_URL],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

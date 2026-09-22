@@ -10,4 +10,9 @@ export interface ITrace {
   tags?: string[];
   freeplan_truncated?: boolean;
   total_cost?: number;
+  agent_id?: string;
+  agent_name?: string;
+  agent_status?: string;
+  parent_agent_id?: string;
+  agent_role?: string;
 }

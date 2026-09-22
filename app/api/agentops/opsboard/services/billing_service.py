@@ -445,7 +445,7 @@ class BillingService:
                         )
                     ) as total_tokens
                 FROM otel_2.otel_traces
-                WHERE project_id IN %(project_ids)s
+                WHERE if(ProjectId = '', ResourceAttributes['ProjectId'], ProjectId) IN %(project_ids)s
                     AND Timestamp >= %(period_start)s
                     AND Timestamp <= %(period_end)s
             """
@@ -530,10 +530,10 @@ class BillingService:
         clickhouse_client = get_clickhouse()
 
         try:
-            # Same query as get_usage_for_period but grouped by project_id
+            # Same query as get_usage_for_period, including the legacy resource-attribute fallback.
             usage_query = """
                 SELECT 
-                    project_id,
+                    if(ProjectId = '', ResourceAttributes['ProjectId'], ProjectId) AS project_id,
                     COUNT(*) as span_count,
                     SUM(
                         COALESCE(
@@ -545,7 +545,7 @@ class BillingService:
                         )
                     ) as total_tokens
                 FROM otel_2.otel_traces
-                WHERE project_id IN %(project_ids)s
+                WHERE if(ProjectId = '', ResourceAttributes['ProjectId'], ProjectId) IN %(project_ids)s
                     AND Timestamp >= %(period_start)s
                     AND Timestamp <= %(period_end)s
                 GROUP BY project_id

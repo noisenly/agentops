@@ -42,6 +42,7 @@ from jinja2 import Environment, FileSystemLoader
 import gotrue
 
 from agentops.api.log_config import logger
+from agentops.api.environment import SUPABASE_URL
 from agentops.common.route_config import reverse_path, BaseView
 from agentops.common.environment import DASHBOARD_URL, API_DOMAIN, API_URL, APP_URL
 from agentops.common import rate_limit
@@ -130,9 +131,14 @@ def _decode_supabase_jwt(token: str) -> SupabaseUserData:
     Decode the Supabase JWT to get the available data about the authenticated user.
     """
     # Add leeway to account for clock skew between Supabase and our server
-    user_info = jwt.decode(
-        token, SUPABASE_JWT_SECRET, algorithms=['HS256'], audience="authenticated", leeway=10
-    )
+    algorithm = jwt.get_unverified_header(token)["alg"]
+    if algorithm == "HS256":
+        key = SUPABASE_JWT_SECRET
+    elif algorithm in {"ES256", "RS256"}:
+        key = jwt.PyJWKClient(f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json").get_signing_key_from_jwt(token).key
+    else:
+        raise AuthException("Unsupported Supabase JWT algorithm")
+    user_info = jwt.decode(token, key, algorithms=[algorithm], audience="authenticated", leeway=10)
     return SupabaseUserData(**user_info)
 
 

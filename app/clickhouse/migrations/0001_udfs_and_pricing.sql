@@ -15,7 +15,7 @@ CREATE DICTIONARY otel_2.model_costs_dict
     `completion_cost_per_1k` Float64
 )
 PRIMARY KEY model
-SOURCE(CLICKHOUSE(HOST 'localhost' PORT 9000 USER 'default' DB 'otel_2' TABLE 'model_costs_source'))
+SOURCE(CLICKHOUSE(HOST 'localhost' PORT 9000 USER 'default' PASSWORD 'password' DB 'otel_2' TABLE 'model_costs_source'))
 LIFETIME(MIN 0 MAX 0)
 LAYOUT(COMPLEX_KEY_HASHED());
 

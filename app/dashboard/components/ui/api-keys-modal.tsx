@@ -53,7 +53,7 @@ function ProjectsList({ orgId, premStatus }: { orgId: string; premStatus: string
     }
   };
 
-  const isPro = premStatus === 'pro';
+  const isPro = premStatus !== 'free';
 
   return (
     <div className="space-y-3">

@@ -87,6 +87,8 @@ services:
       STRIPE_SECRET_KEY: ${NEXT_STRIPE_SECRET_KEY}
       STRIPE_WEBHOOK_SECRET: ${NEXT_STRIPE_WEBHOOK_SECRET}
       LATTICE_DIR: /lattice
+      AGENT_RUNNER_URL: http://host.docker.internal:4390
+      AGENT_RUNNER_TOKEN: ${AGENT_RUNNER_TOKEN}
     volumes:
       - ${LATTICE_REPO:-../../Skillvue/skillvue-showroom-monorepo}:/lattice:ro
     depends_on:

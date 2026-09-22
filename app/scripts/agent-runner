@@ -4,7 +4,7 @@
 Deliberately tiny attack surface: loopback only, bearer token, and exactly one
 fixed action. The caller cannot choose the command, the repo, or the prompt.
 
-  AGENT_RUNNER_TOKEN=... agent-runner            # serve on 127.0.0.1:4390
+  agent-runner            # serve on 127.0.0.1:4390; token from $AGENT_RUNNER_TOKEN or app/.env
   POST /launch-issues   Authorization: Bearer <token>
 """
 import hmac
@@ -19,7 +19,21 @@ HERE = Path(__file__).resolve().parent
 OBSERVE = HERE / "agent-observe"
 REPO = Path(os.environ.get("AGENT_RUNNER_REPO", Path.home() / "Developer/Skillvue/skillvue-showroom-monorepo"))
 PORT = int(os.environ.get("AGENT_RUNNER_PORT", "4390"))
-TOKEN = os.environ.get("AGENT_RUNNER_TOKEN", "")
+
+
+def env_token():
+    """Shared with the dashboard via app/.env (gitignored) unless set in the environment."""
+    if os.environ.get("AGENT_RUNNER_TOKEN"):
+        return os.environ["AGENT_RUNNER_TOKEN"]
+    env_file = HERE.parent / ".env"
+    if env_file.exists():
+        match = re.search(r"^AGENT_RUNNER_TOKEN=(\S+)$", env_file.read_text(), re.M)
+        if match:
+            return match.group(1)
+    return ""
+
+
+TOKEN = env_token()
 LEADER = "demo_leader"
 # ponytail: one prompt for every issue; per-issue prompts when the harness needs them.
 PROMPT = (

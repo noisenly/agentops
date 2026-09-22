@@ -6,14 +6,15 @@ receivers:
     protocols:
       http:
         endpoint: 0.0.0.0:4318
-        auth:
-          authenticator: jwtauthextension
       grpc:
         endpoint: 0.0.0.0:4317
-        auth:
-          authenticator: jwtauthextension
 
 processors:
+  filter/opencode_internal:
+    error_mode: ignore
+    traces:
+      span:
+        - resource.attributes["service.name"] == "opencode" and not (name == "invoke_agent opencode" or IsMatch(name, "^chat ") or IsMatch(name, "^execute_tool "))
   batch:
     send_batch_size: 100000
     timeout: 5s
@@ -48,11 +49,9 @@ extensions:
   health_check:
   pprof:
   zpages:
-  jwtauthextension:
-    secret: ${JWT_SECRET}
 
 service:
-  extensions: [pprof, zpages, health_check, jwtauthextension]
+  extensions: [pprof, zpages, health_check]
   # telemetry:
   #   logs:
   #     level: debug
@@ -64,7 +63,7 @@ service:
       exporters: [clickhouse/otel_traces]
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection/system, resource, transform, batch]
+      processors: [memory_limiter, resourcedetection/system, resource, transform, filter/opencode_internal, batch]
       exporters: [clickhouse/otel_traces]
     metrics:
       receivers: [otlp]

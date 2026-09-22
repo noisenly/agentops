@@ -1995,12 +1995,6 @@ async def get_stripe_pricing(
     orm: Session = Depends(get_orm_session),
 ) -> dict:
     """Get current Stripe pricing information including seat and usage pricing."""
-    if not _validate_and_set_stripe_key("get_stripe_pricing"):
-        raise HTTPException(status_code=500, detail="Stripe configuration error")
-
-    # Log all price ID status for debugging
-    _validate_stripe_price_ids("get_stripe_pricing")
-
     user: Optional[UserModel] = UserModel.get_by_id(orm, request.state.session.user_id)
     if not user:
         raise HTTPException(status_code=401, detail="User not authenticated.")
@@ -2008,6 +2002,21 @@ async def get_stripe_pricing(
     org: Optional[OrgModel] = OrgModel.get_by_id(orm, org_id)
     if not org or not org.is_user_member(request.state.session.user_id):
         raise HTTPException(status_code=403, detail="Access denied.")
+
+    if not STRIPE_SECRET_KEY:
+        return {
+            "seat": {
+                "priceId": None,
+                "amount": 0,
+                "currency": "usd",
+                "interval": "month",
+                "interval_count": None,
+            }
+        }
+
+    # Log all price ID status for debugging
+    _validate_stripe_price_ids("get_stripe_pricing")
+    _validate_and_set_stripe_key("get_stripe_pricing")
 
     try:
         # Get seat pricing

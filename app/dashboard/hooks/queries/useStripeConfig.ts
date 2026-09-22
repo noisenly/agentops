@@ -40,6 +40,9 @@ export const useStripeConfig = () => {
       const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
 
       if (!publishableKey) {
+        if (process.env.NEXT_PUBLIC_ENVIRONMENT_TYPE === 'development') {
+          return { priceId: '', publishableKey: '' };
+        }
         throw new Error('Stripe publishable key not found in environment variables');
       }
 

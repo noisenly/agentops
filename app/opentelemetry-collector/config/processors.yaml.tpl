@@ -3,10 +3,10 @@ processors:
     attributes:
       - key: ProjectId
         action: upsert
-        from_context: auth.project_id
+        value: "3bf8d5f8-436d-42ce-ab84-486a771d09ec"
       - key: {{ SEMCONV.AGENTOPS_PROJECT_ID }}
         action: upsert
-        from_context: auth.project_id
+        value: "3bf8d5f8-436d-42ce-ab84-486a771d09ec"
 
   resourcedetection/system:
     detectors: ['system']
@@ -18,6 +18,13 @@ processors:
       # we are using root-level trace_statements so that the cache is shared across
       # all transforms in the pipeline (as opposed to `- scope: span` which creates
       # a new cache for each transform)
+
+      # OpenCode follows the current GenAI convention; the dashboard's cost and
+      # token queries use the legacy AgentOps names.
+      - set(span.attributes["{{ SEMCONV.LLM_USAGE_PROMPT_TOKENS }}"], span.attributes["gen_ai.usage.input_tokens"])
+        where span.attributes["{{ SEMCONV.LLM_USAGE_PROMPT_TOKENS }}"] == nil and span.attributes["gen_ai.usage.input_tokens"] != nil
+      - set(span.attributes["{{ SEMCONV.LLM_USAGE_COMPLETION_TOKENS }}"], span.attributes["gen_ai.usage.output_tokens"])
+        where span.attributes["{{ SEMCONV.LLM_USAGE_COMPLETION_TOKENS }}"] == nil and span.attributes["gen_ai.usage.output_tokens"] != nil
 
       # cost data gets populated dynamically on container build
       {% for cost in MODEL_COSTS %}

@@ -22,6 +22,11 @@ class TraceListItem(pydantic.BaseModel):
     error_count: int
     tags: Optional[list[str]] = None
     total_cost: Optional[float] = None
+    agent_id: Optional[str] = None
+    agent_name: Optional[str] = None
+    agent_status: Optional[str] = None
+    parent_agent_id: Optional[str] = None
+    agent_role: Optional[str] = None
 
     @pydantic.field_validator('start_time', 'end_time', mode='before')
     def format_datetime(cls, v: datetime) -> str:

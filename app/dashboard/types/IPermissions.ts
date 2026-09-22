@@ -116,6 +116,7 @@ export const getDerivedPermissions = (orgData?: IOrg | null): OrgFeaturePermissi
 
   switch (status) {
     case 'pro':
+    case 'enterprise':
       basePermissions = defaultProPermissions;
       break;
     case 'free':

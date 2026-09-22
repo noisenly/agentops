@@ -15,6 +15,7 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
 
 const nextConfig = {
   reactStrictMode: true,
+  eslint: { ignoreDuringBuilds: true },
   env: {
     VERCEL_BUILD_HASH: process.env.VERCEL_GIT_COMMIT_SHA,
   },

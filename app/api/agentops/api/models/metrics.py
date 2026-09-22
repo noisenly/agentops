@@ -44,12 +44,12 @@ class TraceCountsModel(BaseTraceModel):
         where_clause, params = cls._get_where_clause(**(filters or {}))
         query = f"""
         SELECT
-            any(project_id) as project_id_,  -- cannot reassign project_id
+            any(if(ProjectId = '', ResourceAttributes['ProjectId'], ProjectId)) as project_id_,
             count() as span_count,
             count(DISTINCT TraceId) as trace_count
         FROM {cls.table_name}
         {f"WHERE {where_clause}" if where_clause else ""}
-        GROUP BY project_id
+        GROUP BY if(ProjectId = '', ResourceAttributes['ProjectId'], ProjectId)
         """
         return query, params
 

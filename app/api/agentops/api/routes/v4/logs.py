@@ -92,10 +92,12 @@ async def get_local_codex_logs(trace: TraceModel) -> str | None:
         SELECT Timestamp AS timestamp, LogAttributes AS attributes
         FROM otel_logs
         WHERE ServiceName = 'codex_cli_rs'
+          AND ResourceAttributes['ProjectId'] = %(project_id)s
           AND LogAttributes['conversation.id'] = %(conversation_id)s
         ORDER BY Timestamp
         """,
-        parameters={"conversation_id": conversation_id},
+        # conversation.id comes from span data the client wrote, so scope to the trace's project too.
+        parameters={"project_id": trace.project_id, "conversation_id": conversation_id},
     )
     lines = []
     for row in result.named_results():

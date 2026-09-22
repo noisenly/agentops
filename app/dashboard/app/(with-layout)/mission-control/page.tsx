@@ -1,9 +1,9 @@
 'use client';
 
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Activity01Icon, ArrowUpRight01Icon, BotIcon, Clock01Icon, FlashIcon, Layers01Icon } from 'hugeicons-react';
 import Link from 'next/link';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useProjects } from '@/hooks/queries/useProjects';
 import { fetchAuthenticatedApi } from '@/lib/api-client';
 import { ProjectMetrics } from '@/lib/interfaces';
@@ -58,9 +58,15 @@ function isLive(value?: string) {
 
 function buildRunForest(runs: Run[]) {
   const nodes = new Map<string, RunNode>(runs.filter((run) => run.agent_id).map((run) => [run.agent_id!, { ...run, children: [] }]));
+  // Parents are referenced by agent id or, for launched workers, by Lattice name (e.g. demo_leader).
+  const byName = new Map<string, RunNode>();
+  for (const node of nodes.values()) {
+    const seen = node.agent_name && byName.get(node.agent_name);
+    if (node.agent_name && (!seen || node.start_time > seen.start_time)) byName.set(node.agent_name, node);
+  }
   const roots: RunNode[] = [];
   for (const node of nodes.values()) {
-    const parent = node.parent_agent_id && nodes.get(node.parent_agent_id);
+    const parent = node.parent_agent_id && (nodes.get(node.parent_agent_id) ?? byName.get(node.parent_agent_id));
     if (parent && parent !== node) parent.children.push(node);
     else roots.push(node);
   }
@@ -239,7 +245,10 @@ function LatticeView({ graph, latest }: { graph: LatticeGraph; latest: Map<strin
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-300">Lattice</p>
           <h2 className="mt-1 text-xl font-semibold">Declared agents, live status</h2>
         </div>
-        <p className="text-sm text-slate-400">{live} of {graph.nodes.length} running{waiting > 0 && <span className="text-amber-300"> · {waiting} waiting on you</span>}</p>
+        <div className="flex flex-col items-end gap-2">
+          <p className="text-sm text-slate-400">{live} of {graph.nodes.length} running{waiting > 0 && <span className="text-amber-300"> · {waiting} waiting on you</span>}</p>
+          <LaunchIssueAgents count={graph.nodes.filter((node) => node.id.startsWith('impl_')).length} />
+        </div>
       </div>
       <div className="mt-6 overflow-x-auto pb-2">
         <div className="flex min-w-max flex-col items-center gap-3">
@@ -254,6 +263,42 @@ function LatticeView({ graph, latest }: { graph: LatticeGraph; latest: Map<strin
         </div>
       </div>
     </section>
+  );
+}
+
+// Two-step on purpose: each click starts real, token-spending agents.
+function LaunchIssueAgents({ count }: { count: number }) {
+  const queryClient = useQueryClient();
+  const [state, setState] = useState<'idle' | 'confirm' | 'launching'>('idle');
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function launch() {
+    setState('launching');
+    try {
+      const res = await fetch('/api/runner/launch', { method: 'POST', headers: { 'x-mission-control': 'launch' } });
+      const body = await res.json();
+      setMessage(res.ok ? `Launched ${body.launched.map((a: { agent: string }) => a.agent).join(', ') || 'nothing — no issues in progress'}` : body.error);
+      queryClient.invalidateQueries({ queryKey: ['lattice'] });
+      queryClient.invalidateQueries({ queryKey: ['mission-control'] });
+    } catch {
+      setMessage('Launch request failed');
+    }
+    setState('idle');
+  }
+
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      {message && <span className="text-xs text-slate-400">{message}</span>}
+      {state === 'confirm' && <button type="button" onClick={() => setState('idle')} className="rounded-full px-3 py-1.5 text-slate-400 hover:text-slate-200">Cancel</button>}
+      <button
+        type="button"
+        disabled={state === 'launching'}
+        onClick={() => (state === 'confirm' ? launch() : (setMessage(null), setState('confirm')))}
+        className={`rounded-full border px-4 py-1.5 font-medium transition disabled:opacity-50 ${state === 'confirm' ? 'border-amber-300/60 bg-amber-300/15 text-amber-100' : 'border-cyan-300/30 bg-cyan-300/10 text-cyan-100 hover:border-cyan-300/60'}`}
+      >
+        {state === 'launching' ? 'Launching…' : state === 'confirm' ? `Launch ${count} issue agent${count === 1 ? '' : 's'}?` : '▶ Launch issue agents'}
+      </button>
+    </div>
   );
 }
 

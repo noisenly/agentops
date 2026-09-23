@@ -239,3 +239,5 @@ opsboard/build
 dashboard/package-lock.json
 landing/package-lock.json
 package-lock.json
+# local session cache (CACHE_DB_PATH)
+api/cache.db

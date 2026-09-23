@@ -78,8 +78,9 @@ else:
         """SQLite-backed cache for local development."""
 
         def __init__(self):
-            self.db_path = os.path.join(os.getcwd(), "cache.db")
-            self.conn = sqlite3.connect(self.db_path)
+            self.db_path = os.environ.get("CACHE_DB_PATH") or os.path.join(os.getcwd(), "cache.db")
+            # Served from a threadpool; one connection is fine at local-dev volumes.
+            self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
             self.conn.execute("""
                 CREATE TABLE IF NOT EXISTS cache (
                     key TEXT PRIMARY KEY,
@@ -125,7 +126,11 @@ else:
             self.conn.execute("DELETE FROM cache WHERE key = ?", (key,))
             self.conn.commit()
 
-    if os.path.exists("/.dockerenv"):
+    if os.environ.get("CACHE_DB_PATH"):
+        # Point this at a mounted path so sessions survive container restarts.
+        logger.info("Using SQLite cache at CACHE_DB_PATH.")
+        _backend = SQLiteCache()
+    elif os.path.exists("/.dockerenv"):
         logger.info("Using in-memory cache for local development.")
         _backend = SimpleCache()
     elif os.environ.get('GITHUB_ACTIONS') == 'true':
